@@ -1,0 +1,32 @@
+
+
+[output]
+
+    [output.S3]
+    plugin = "awsS3"
+    region = "eu-west-1"
+    bucket = "my-bucket-name"
+    prefix = "testing"
+    profile = "aws-profile-name"
+
+[aggregator]
+
+    [aggregator.file]
+    plugin = "file"
+    compress = true
+    compressLevel = 3
+    linesLimit = 1000
+
+[input]
+
+    [input.syslog]
+    plugin = "cmd"
+    cmd = ["tail", "-n", "0", "-f", "/var/log/syslog"]
+    aggregator = "file"
+    output = "S3"
+    
+    [input.auth]
+    plugin = "cmd"
+    cmd = ["tail", "-n", "0", "-f", "/var/log/auth.log"]
+    aggregator = "file"
+    output = "S3"
