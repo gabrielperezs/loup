@@ -79,7 +79,6 @@ func (c *Cmd) listen() {
 
 		cmd := exec.Command(c.command[0], c.command[1:]...)
 		cmd.Stdout = c.aggregator
-
 		if err := cmd.Start(); err != nil {
 			log.Printf("[I:%s] ERROR Start: %s", c.name, err)
 			return
@@ -90,7 +89,7 @@ func (c *Cmd) listen() {
 		c.m.Unlock()
 
 		if c.isExiting() {
-			return
+			c.cmd.Process.Signal(syscall.SIGTERM)
 		}
 
 		if err := cmd.Wait(); err != nil {

@@ -76,6 +76,7 @@ func (p *AwsS3) listen() {
 	go func() {
 		defer wg.Done()
 		for f := range p.fileCh {
+			log.Printf("[O:%s] Debug read file from ch")
 			p.sendFile(f)
 		}
 	}()
@@ -96,6 +97,7 @@ func (p *AwsS3) listen() {
 func (p *AwsS3) SendFile(f *os.File) error {
 	select {
 	case p.fileCh <- f:
+		log.Printf("[O:%s] Debug sending file to ch")
 		return nil
 	default:
 		return fmt.Errorf("Files channel full")
@@ -103,6 +105,8 @@ func (p *AwsS3) SendFile(f *os.File) error {
 }
 
 func (p *AwsS3) sendFile(f *os.File) error {
+
+	log.Printf("[O:%s] Debug sending file to S3")
 
 	t := time.Now().UTC()
 	hash := murmur3.Sum64WithSeed([]byte(f.Name()), uint32(time.Now().Nanosecond()))
@@ -115,8 +119,6 @@ func (p *AwsS3) sendFile(f *os.File) error {
 		Key: aws.String(fmt.Sprintf("%s/%04d/%02d/%02d/%02d/%02d/%s-%2x-%s.gz",
 			p.prefix, t.Year(), t.Month(), t.Day(), t.Hour(), t.Minute(), p.name, hash, p.randStringBytes(5))),
 	}
-
-	defer os.Remove(f.Name())
 
 	retry := 0
 	for {
@@ -139,6 +141,8 @@ func (p *AwsS3) sendFile(f *os.File) error {
 		// Waiting for the next try
 		time.Sleep(sleepRetry)
 	}
+
+	os.Remove(f.Name())
 
 	return nil
 }
@@ -192,6 +196,8 @@ func (p *AwsS3) Exit() {
 	}
 
 	<-p.done
+
+	log.Printf("[O:%s] Exit", p.name)
 }
 
 func (p *AwsS3) randStringBytes(n int) string {
