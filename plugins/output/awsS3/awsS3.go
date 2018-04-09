@@ -5,6 +5,7 @@ import (
 	"log"
 	"math/rand"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -22,6 +23,9 @@ const (
 	letterBytes = "abcdefghijklmnopqrstuvwxyz0123456789"
 	fileChSize  = 1000
 	bytesChSize = 1000
+
+	errAccessDenied          = "AccessDenied"
+	errSignatureDoesNotMatch = "SignatureDoesNotMatch"
 )
 
 type AwsS3 struct {
@@ -31,6 +35,8 @@ type AwsS3 struct {
 	bucket  *string
 	profile string
 	prefix  string
+	key     string
+	secret  string
 
 	fileCh  chan *os.File
 	bytesCh chan []byte
@@ -43,18 +49,48 @@ func New(name string, in interface{}) *AwsS3 {
 
 	p := &AwsS3{
 		name:    name,
-		profile: cfg["profile"].(string),
-		region:  cfg["region"].(string),
-		bucket:  aws.String(cfg["bucket"].(string)),
-		prefix:  cfg["prefix"].(string),
-
 		fileCh:  make(chan *os.File, fileChSize),
 		bytesCh: make(chan []byte, bytesChSize),
 		done:    make(chan struct{}),
 	}
 
+	for k, v := range cfg {
+		k = strings.ToLower(k)
+		switch k {
+		case "profile":
+			p.profile = v.(string)
+		case "region":
+			p.region = v.(string)
+		case "bucket":
+			p.bucket = aws.String(v.(string))
+		case "prefix":
+			p.prefix = v.(string)
+		case "key":
+			p.key = v.(string)
+		case "secret":
+			p.secret = v.(string)
+		}
+	}
+
+	var c aws.Credentials
+	if p.key != "" && p.secret != "" {
+		key := p.key
+		if strings.HasPrefix(p.key, "ENV.") {
+			key = os.Getenv(strings.Replace(p.key, "ENV.", "", 1))
+		}
+		secret := p.secret
+		if strings.HasPrefix(p.secret, "ENV.") {
+			secret = os.Getenv(strings.Replace(p.secret, "ENV.", "", 1))
+		}
+		c = aws.Credentials{
+			AccessKeyID:     key,
+			SecretAccessKey: secret,
+		}
+	}
+
 	awsCfg, err := external.LoadDefaultAWSConfig(
-		external.WithSharedConfigProfile(p.profile),
+		external.WithCredentialsValue(c),
+		//external.WithSharedConfigProfile(p.profile),
 		external.WithRegion(p.region),
 	)
 	if err != nil {
@@ -76,7 +112,7 @@ func (p *AwsS3) listen() {
 	go func() {
 		defer wg.Done()
 		for f := range p.fileCh {
-			log.Printf("[O:%s] Debug read file from ch")
+			log.Printf("[O:%s] Debug read file from ch", p.name)
 			p.sendFile(f)
 		}
 	}()
@@ -97,7 +133,7 @@ func (p *AwsS3) listen() {
 func (p *AwsS3) SendFile(f *os.File) error {
 	select {
 	case p.fileCh <- f:
-		log.Printf("[O:%s] Debug sending file to ch")
+		log.Printf("[O:%s] Debug sending file to ch", p.name)
 		return nil
 	default:
 		return fmt.Errorf("Files channel full")
@@ -106,7 +142,7 @@ func (p *AwsS3) SendFile(f *os.File) error {
 
 func (p *AwsS3) sendFile(f *os.File) error {
 
-	log.Printf("[O:%s] Debug sending file to S3")
+	log.Printf("[O:%s] Debug sending file to S3", p.name)
 
 	t := time.Now().UTC()
 	hash := murmur3.Sum64WithSeed([]byte(f.Name()), uint32(time.Now().Nanosecond()))
@@ -131,6 +167,14 @@ func (p *AwsS3) sendFile(f *os.File) error {
 		}
 
 		log.Printf("[O:%s] ERROR SendFile failed: %s - %s", p.name, f.Name(), err)
+
+		switch err.Error() {
+		case errAccessDenied, errSignatureDoesNotMatch:
+			// Don't try more
+			return err
+		default:
+		}
+
 		retry++
 
 		if retry >= maxRetry {
@@ -155,12 +199,10 @@ func (p *AwsS3) putObject(input *s3.PutObjectInput, fileName string) error {
 	}
 
 	if aerr, ok := err.(awserr.Error); ok {
-		switch aerr.Code() {
-		default:
-			log.Printf("[O:%s] ERROR SendFile: %s - %s", p.name, fileName, aerr)
-		}
+		log.Printf("[O:%s] ERROR SendFile: %s - %s (%s)", p.name, fileName, aerr, aerr.Code())
+		return fmt.Errorf(aerr.Code())
 	} else {
-		log.Printf("[O:%s] ERROR SendFile: %s - %s", p.name, fileName, err)
+		log.Printf("[O:%s] ERROR SendFile 2: %s - %s", p.name, fileName, err)
 	}
 	return err
 }
