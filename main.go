@@ -24,12 +24,19 @@ var (
 	loaded     lib.Loaded
 	conf       lib.Config
 	configFile string
+	debug      bool
 	done       chan struct{}
 )
 
 func main() {
 	flag.StringVar(&configFile, "config", defaultConfigFile, "Path to the config file")
+	flag.BoolVar(&debug, "debug", false, "Debug mode")
 	flag.Parse()
+
+	if !debug {
+		log.SetFlags(0)
+	}
+
 	done = make(chan struct{})
 	signals()
 	reload()

@@ -144,7 +144,6 @@ func (a *File) reset() (err error) {
 }
 
 func (a *File) Write(b []byte) (i int, err error) {
-	log.Printf("[A:%s] write", a.name)
 	n := pool.GetLen(len(b))
 	n.Set(b)
 	a.bufCh <- n
