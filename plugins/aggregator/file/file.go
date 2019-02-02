@@ -14,11 +14,11 @@ import (
 )
 
 var (
-	tmpFilePrefix     = "loup-cmd-"
-	newLine           = []byte("\n")
-	defaultLimitLines = uint64(99999)
-	defaultBufSize    = 4096
-	pool              = &bytebufferpool.Pool{}
+	tmpFilePrefixSuffix = "loup-cmd-*.log"
+	newLine             = []byte("\n")
+	defaultLimitLines   = uint64(99999)
+	defaultBufSize      = 4096
+	pool                = &bytebufferpool.Pool{}
 )
 
 type File struct {
@@ -121,7 +121,7 @@ func (a *File) reset() (err error) {
 	defer a.m.Unlock()
 
 	// Create new tmp file
-	a.tmp, err = ioutil.TempFile(os.TempDir(), tmpFilePrefix)
+	a.tmp, err = ioutil.TempFile(os.TempDir(), tmpFilePrefixSuffix)
 	if err != nil {
 		log.Printf("[A:%s] ERROR creating tmp file: %s", a.name, err)
 		return err

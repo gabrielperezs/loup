@@ -90,7 +90,7 @@ func New(name string, in interface{}) *AwsS3 {
 
 	awsCfg, err := external.LoadDefaultAWSConfig(
 		external.WithCredentialsValue(c),
-		//external.WithSharedConfigProfile(p.profile),
+		external.WithSharedConfigProfile(p.profile),
 		external.WithRegion(p.region),
 	)
 	if err != nil {
@@ -147,13 +147,23 @@ func (p *AwsS3) sendFile(f *os.File) error {
 	t := time.Now().UTC()
 	hash := murmur3.Sum64WithSeed([]byte(f.Name()), uint32(time.Now().Nanosecond()))
 
+	hostname, err := os.Hostname()
+	if err != nil || hostname == "" {
+		hostname = "localhost"
+	}
+
+	prefix := p.prefix
+	prefix = strings.Replace(prefix, "%y", fmt.Sprintf("%04d", t.Year()), -1)
+	prefix = strings.Replace(prefix, "%m", fmt.Sprintf("%02d", t.Month()), -1)
+	prefix = strings.Replace(prefix, "%d", fmt.Sprintf("%02d", t.Day()), -1)
+	prefix = strings.Replace(prefix, "%h", fmt.Sprintf("%02d", t.Hour()), -1)
+	prefix = strings.Replace(prefix, "%i", fmt.Sprintf("%02d", t.Minute()), -1)
+
 	input := &s3.PutObjectInput{
 		ACL:    s3.ObjectCannedACLAuthenticatedRead,
 		Body:   aws.ReadSeekCloser(f),
 		Bucket: p.bucket,
-
-		Key: aws.String(fmt.Sprintf("%s/%04d/%02d/%02d/%02d/%02d/%s-%2x-%s.gz",
-			p.prefix, t.Year(), t.Month(), t.Day(), t.Hour(), t.Minute(), p.name, hash, p.randStringBytes(5))),
+		Key:    aws.String(fmt.Sprintf("%s/%s-%s-%s-%2x-%s.log.gz", prefix, t.Format(time.RFC3339Nano), hostname, p.name, hash, p.randStringBytes(5))),
 	}
 
 	retry := 0
